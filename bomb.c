@@ -1,5 +1,6 @@
 #include <LiquidCrystal.h>
 
+
 // Definição dos pinos
 const int buttonPin1 = 7;
 const int buttonPin2 = 8;
@@ -10,6 +11,12 @@ int buttonState1 = 0;
 int buttonState2 = 0;
 int buttonState3 = 0;
 
+enum DominacaoState {
+  NONE,
+  AZUL,
+  AMARELO
+};
+
 // Variáveis de tempo
 unsigned long button1PressTime = 0;
 unsigned long button2PressTime = 0;
@@ -18,11 +25,17 @@ unsigned long button2Elapsed = 0;
 unsigned long button3PressTime = 0;
 unsigned long button3Elapsed = 0;
 
+unsigned long azulDominacaoTempo = 0;
+unsigned long amareloDominacaoTempo = 0;
+unsigned long dominioStartTime = 0;
+DominacaoState lastDominacaoState = NONE;
+
 unsigned long startTime;
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2); // Inicializa o LCD
 
 enum MenuState {
+  // Variaveis do menu e Bomba
   GAME_MODE_MENU,
   GAME_OPTION_MENU,
   CONFIG_MENU,
@@ -41,6 +54,7 @@ enum MenuState {
   CRONOMETRO_DESARME,
   CT_VENCEU,
   TR_VENCEU,
+  // Variáveis do modo Conquista
   DOMINACAO_CONFIG,
   DOMINACAO_CONFIG_DURACAO_HOURS,
   DOMINACAO_CONFIG_DURACAO_MINUTES,
@@ -51,14 +65,21 @@ enum MenuState {
   DOMINACAO_START,
   DOMINACAO_RUNNING,
   DOMINACAO_DOMINATING_AZUL,
-  DOMINACAO_DOMINATING_VERMEL,
-  DOMINACAO_VENCEU
-};
-
-enum DominacaoState {
-  NONE,
-  AZUL,
-  VERMEL
+  DOMINACAO_DOMINATING_AMARELO,
+  DOMINACAO_VENCEU,
+  // Variáveis do modo Dominacao
+  DOMINACAO_TEMPO_START,
+  DOMINACAO_TEMPO_CONFIG,
+  DOMINACAO_TEMPO_CONFIG_DURACAO_HOURS,
+  DOMINACAO_TEMPO_CONFIG_DURACAO_MINUTES,
+  DOMINACAO_TEMPO_CONFIG_DURACAO_SECONDS,
+  DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_HOURS,
+  DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_MINUTES,
+  DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_SECONDS,
+  DOMINACAO_TEMPO_RUNNING,
+  DOMINACAO_TEMPO_DOMINATING_AZUL,
+  DOMINACAO_TEMPO_DOMINATING_AMARELO,
+  DOMINACAO_TEMPO_VENCEU
 };
 
 
@@ -83,7 +104,7 @@ byte fullBlock[8] = {
   0b11111
 };
 
-const char* gameModes[] = {"Modo Bomba", "Dominacao"};
+const char* gameModes[] = {"Bomba", "Conquista", "Dominacao"};
 int currentGameModeIndex = 0;
 const int numGameModes = sizeof(gameModes) / sizeof(gameModes[0]);
 
@@ -188,12 +209,41 @@ void loop() {
     case DOMINACAO_DOMINATING_AZUL:
       handleDominacaoDominatingAzul();
       break;
-    case DOMINACAO_DOMINATING_VERMEL:
-      handleDominacaoDominatingVermel();
+    case DOMINACAO_DOMINATING_AMARELO:
+      handleDominacaoDominatingAmarelo();
       break;
     case DOMINACAO_VENCEU:
       handleDominacaoVenceu();
       break;
+      // Modo Dominacao tempo
+  case DOMINACAO_TEMPO_START:
+    handleDominacaoTempoStart();
+    break;
+  case DOMINACAO_TEMPO_CONFIG:
+    handleDominacaoTempoConfig();
+    break;
+  case DOMINACAO_TEMPO_CONFIG_DURACAO_HOURS:
+  case DOMINACAO_TEMPO_CONFIG_DURACAO_MINUTES:
+  case DOMINACAO_TEMPO_CONFIG_DURACAO_SECONDS:
+    handleDominacaoTempoConfigDuracao();
+    break;
+  case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_HOURS:
+  case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_MINUTES:
+  case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_SECONDS:
+    handleDominacaoTempoConfigTempoDominar();
+    break;
+  case DOMINACAO_TEMPO_RUNNING:
+    handleDominacaoTempoRunning();
+    break;
+  case DOMINACAO_TEMPO_DOMINATING_AZUL:
+    handleDominacaoTempoDominatingAzul();
+    break;
+  case DOMINACAO_TEMPO_DOMINATING_AMARELO:
+    handleDominacaoTempoDominatingAmarelo();
+    break;
+  case DOMINACAO_TEMPO_VENCEU:
+    handleDominacaoTempoVenceu();
+    break;
   }
 }
 
@@ -225,6 +275,12 @@ void handleGameOptionMenu() {
       currentState = DOMINACAO_START;
       startTime = millis();
       showDominacaoStart();
+    } else if (currentGameModeIndex == 2) {
+      currentState = DOMINACAO_TEMPO_RUNNING;
+      startTime = millis();
+      dominioStartTime = millis();  // Inicializa o tempo de domínio
+      lastDominacaoState = NONE;
+      showDominacaoTempoRunning();
     }
     delay(200);
   }
@@ -235,6 +291,9 @@ void handleGameOptionMenu() {
     } else if (currentGameModeIndex == 1) {
       currentState = DOMINACAO_CONFIG;
       showDominacaoConfig();
+    } else if (currentGameModeIndex == 2) {
+      currentState = DOMINACAO_TEMPO_CONFIG;
+      showDominacaoTempoConfig();
     }
     delay(200);
   }
@@ -244,6 +303,7 @@ void handleGameOptionMenu() {
     delay(200);
   }
 }
+
 
 void handleConfigMenu() {
   if (buttonState1 == LOW) {
@@ -365,6 +425,8 @@ void handleVictory() {
   }
 }
 
+// CONFIGURACOES DE DOMINACAO
+
 void handleDominacaoConfig() {
   if (buttonState1 == LOW) {
     currentState = DOMINACAO_CONFIG_DURACAO_HOURS;
@@ -441,8 +503,8 @@ void handleDominacaoRunning() {
 
   if (buttonState2 == LOW) {
     button2PressTime = millis();
-    currentState = DOMINACAO_DOMINATING_VERMEL;
-    handleDominacaoDominatingVermel();  // Correção aqui
+    currentState = DOMINACAO_DOMINATING_AMARELO;
+    handleDominacaoDominatingAmarelo();  // Correção aqui
     delay(200);
   }
 
@@ -485,7 +547,7 @@ void handleDominacaoDominatingAzul() {
   }
 }
 
-void handleDominacaoDominatingVermel() {
+void handleDominacaoDominatingAmarelo() {
   if (buttonState2 == LOW) {
     if (button2PressTime == 0) {
       button2PressTime = millis();
@@ -493,8 +555,8 @@ void handleDominacaoDominatingVermel() {
       button2Elapsed = millis() - button2PressTime;
       showProgress("Dominando", button2Elapsed, (dominacaoTempoDominarHours * 3600 + dominacaoTempoDominarMinutes * 60 + dominacaoTempoDominarSeconds) * 1000);
       if (button2Elapsed >= (dominacaoTempoDominarHours * 3600 + dominacaoTempoDominarMinutes * 60 + dominacaoTempoDominarSeconds) * 1000) {
-        currentDominacaoState = VERMEL;
-        showDominacaoDominatedMessage("Vermelho");
+        currentDominacaoState = AMARELO;
+        showDominacaoDominatedMessage("Amarelo");
         currentState = DOMINACAO_RUNNING;
         showDominacaoRunning();
         delay(200);
@@ -512,8 +574,8 @@ void showDominacaoVencedor() {
   lcd.setCursor(0, 0);
   if (currentDominacaoState == AZUL) {
     lcd.print("Azul Venceu!");
-  } else if (currentDominacaoState == VERMEL) {
-    lcd.print("Vermelho Venceu!");
+  } else if (currentDominacaoState == AMARELO) {
+    lcd.print("AMARELO Venceu!");
   } else {
     lcd.print("Ninguem Venceu!");
   }
@@ -995,8 +1057,8 @@ void showDominacaoRunning() {
     case AZUL:
       lcd.print("Azul");
       break;
-    case VERMEL:
-      lcd.print("Vermelho");
+    case AMARELO:
+      lcd.print("Amarelo");
       break;
   }
   showDominacaoRunningTime();
@@ -1027,7 +1089,7 @@ void showDominacaoDominatedMessage(const char* team) {
   if (strcmp(team, "Azul") == 0) {
     lcd.print("Azul");
   } else {
-    lcd.print("Vermelho");
+    lcd.print("Amarelo");
   }
   lcd.setCursor(0, 1);
   lcd.print("Dominou");
@@ -1041,4 +1103,466 @@ void showDominacaoVenceu() {
   lcd.print("Dominacao");
   lcd.setCursor(0, 1);
   lcd.print("Aperte 1 p/ menu");
+}
+
+// Menu Tempo Dominado
+void showDominacaoTempoConfig() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("1: Duracao");
+  lcd.setCursor(0, 1);
+  lcd.print("2: Tempo Dominar");
+}
+
+void showDominacaoTempoConfigDuracao() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Duracao:");
+  lcd.setCursor(0, 1);
+  lcd.print(dominacaoDuracaoHours);
+  lcd.print(":");
+  lcd.print(dominacaoDuracaoMinutes);
+  lcd.print(":");
+  lcd.print(dominacaoDuracaoSeconds);
+}
+
+void showDominacaoTempoConfigTempoDominar() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Tempo Dominar:");
+  lcd.setCursor(0, 1);
+  lcd.print(dominacaoTempoDominarHours);
+  lcd.print(":");
+  lcd.print(dominacaoTempoDominarMinutes);
+  lcd.print(":");
+  lcd.print(dominacaoTempoDominarSeconds);
+}
+
+// Handlers Tempo Dominado
+void handleDominacaoTempoStart() {
+  if (buttonState1 == LOW) {
+    currentState = DOMINACAO_TEMPO_RUNNING;
+    startTime = millis();
+    dominioStartTime = millis();  // Inicializa o tempo de domínio
+    lastDominacaoState = NONE;
+    showDominacaoTempoRunning();
+    delay(200);
+  }
+  if (buttonState2 == LOW) {
+    currentState = DOMINACAO_TEMPO_CONFIG;
+    showDominacaoTempoConfig();
+    delay(200);
+  }
+}
+
+void handleDominacaoTempoConfig() {
+  if (buttonState1 == LOW) {
+    currentState = DOMINACAO_TEMPO_CONFIG_DURACAO_HOURS;
+    showDominacaoTempoConfigDuracao();
+    delay(200);
+  }
+  if (buttonState2 == LOW) {
+    currentState = DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_HOURS;
+    showDominacaoTempoConfigTempoDominar();
+    delay(200);
+  }
+  if (buttonState3 == LOW) {
+    currentState = GAME_OPTION_MENU;
+    showGameOptionMenu();
+    delay(200);
+  }
+}
+// Handlers Config tempo
+void handleDominacaoTempoConfigDuracao() {
+  if (buttonState1 == LOW) {
+    incrementDominacaoTempoDuracao();
+    showDominacaoTempoConfigDuracao();
+    delay(200);
+  }
+  if (buttonState2 == LOW) {
+    decrementDominacaoTempoDuracao();
+    showDominacaoTempoConfigDuracao();
+    delay(200);
+  }
+  if (buttonState3 == LOW) {
+    advanceDominacaoTempoDuracaoConfig();
+    delay(200);
+  }
+}
+
+void handleDominacaoTempoConfigTempoDominar() {
+  if (buttonState1 == LOW) {
+    incrementDominacaoTempoTempoDominar();
+    showDominacaoTempoConfigTempoDominar();
+    delay(200);
+  }
+  if (buttonState2 == LOW) {
+    decrementDominacaoTempoTempoDominar();
+    showDominacaoTempoConfigTempoDominar();
+    delay(200);
+  }
+  if (buttonState3 == LOW) {
+    advanceDominacaoTempoTempoDominarConfig();
+    delay(200);
+  }
+}
+
+void advanceDominacaoTempoDuracaoConfig() {
+  switch (currentState) {
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_HOURS:
+      currentState = DOMINACAO_TEMPO_CONFIG_DURACAO_MINUTES;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_MINUTES:
+      currentState = DOMINACAO_TEMPO_CONFIG_DURACAO_SECONDS;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_SECONDS:
+      currentState = DOMINACAO_TEMPO_CONFIG;
+      break;
+  }
+  showDominacaoTempoConfigDuracao();
+}
+
+void advanceDominacaoTempoTempoDominarConfig() {
+  switch (currentState) {
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_HOURS:
+      currentState = DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_MINUTES;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_MINUTES:
+      currentState = DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_SECONDS;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_SECONDS:
+      currentState = DOMINACAO_TEMPO_CONFIG;
+      break;
+  }
+  showDominacaoTempoConfigTempoDominar();
+}
+
+//Funçoes de incremetar o tempo:
+
+void incrementDominacaoTempoDuracao() {
+  switch (currentState) {
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_HOURS:
+      dominacaoDuracaoHours++;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_MINUTES:
+      dominacaoDuracaoMinutes++;
+      if (dominacaoDuracaoMinutes >= 60) {
+        dominacaoDuracaoMinutes = 0;
+        dominacaoDuracaoHours++;
+      }
+      break;
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_SECONDS:
+      dominacaoDuracaoSeconds++;
+      if (dominacaoDuracaoSeconds >= 60) {
+        dominacaoDuracaoSeconds = 0;
+        dominacaoDuracaoMinutes++;
+        if (dominacaoDuracaoMinutes >= 60) {
+          dominacaoDuracaoMinutes = 0;
+          dominacaoDuracaoHours++;
+        }
+      }
+      break;
+  }
+}
+
+void decrementDominacaoTempoDuracao() {
+  switch (currentState) {
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_HOURS:
+      if (dominacaoDuracaoHours > 0) dominacaoDuracaoHours--;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_MINUTES:
+      if (dominacaoDuracaoMinutes > 0) {
+        dominacaoDuracaoMinutes--;
+      } else if (dominacaoDuracaoHours > 0) {
+        dominacaoDuracaoMinutes = 59;
+        dominacaoDuracaoHours--;
+      }
+      break;
+    case DOMINACAO_TEMPO_CONFIG_DURACAO_SECONDS:
+      if (dominacaoDuracaoSeconds > 0) {
+        dominacaoDuracaoSeconds--;
+      } else if (dominacaoDuracaoMinutes > 0) {
+        dominacaoDuracaoSeconds = 59;
+        dominacaoDuracaoMinutes--;
+        if (dominacaoDuracaoMinutes <= 0 && dominacaoDuracaoHours > 0) {
+          dominacaoDuracaoMinutes = 59;
+          dominacaoDuracaoHours--;
+        }
+      }
+      break;
+  }
+}
+
+void incrementDominacaoTempoTempoDominar() {
+  switch (currentState) {
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_HOURS:
+      dominacaoTempoDominarHours++;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_MINUTES:
+      dominacaoTempoDominarMinutes++;
+      if (dominacaoTempoDominarMinutes >= 60) {
+        dominacaoTempoDominarMinutes = 0;
+        dominacaoTempoDominarHours++;
+      }
+      break;
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_SECONDS:
+      dominacaoTempoDominarSeconds++;
+      if (dominacaoTempoDominarSeconds >= 60) {
+        dominacaoTempoDominarSeconds = 0;
+        dominacaoTempoDominarMinutes++;
+        if (dominacaoTempoDominarMinutes >= 60) {
+          dominacaoTempoDominarMinutes = 0;
+          dominacaoTempoDominarHours++;
+        }
+      }
+      break;
+  }
+}
+
+void decrementDominacaoTempoTempoDominar() {
+  switch (currentState) {
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_HOURS:
+      if (dominacaoTempoDominarHours > 0) dominacaoTempoDominarHours--;
+      break;
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_MINUTES:
+      if (dominacaoTempoDominarMinutes > 0) {
+        dominacaoTempoDominarMinutes--;
+      } else if (dominacaoTempoDominarHours > 0) {
+        dominacaoTempoDominarMinutes = 59;
+        dominacaoTempoDominarHours--;
+      }
+      break;
+    case DOMINACAO_TEMPO_CONFIG_TEMPO_DOMINAR_SECONDS:
+      if (dominacaoTempoDominarSeconds > 0) {
+        dominacaoTempoDominarSeconds--;
+      } else if (dominacaoTempoDominarMinutes > 0) {
+        dominacaoTempoDominarSeconds = 59;
+        dominacaoTempoDominarMinutes--;
+        if (dominacaoTempoDominarMinutes <= 0 && dominacaoTempoDominarHours > 0) {
+          dominacaoTempoDominarMinutes = 59;
+          dominacaoTempoDominarHours--;
+        }
+      }
+      break;
+  }
+}
+
+
+// Dominacao game functions
+
+void handleDominacaoTempoDominatingAzul() {
+  if (buttonState1 == LOW) {
+    if (button1PressTime == 0) {
+      button1PressTime = millis();
+    } else {
+      button1Elapsed = millis() - button1PressTime;
+      showProgress("Dominando", button1Elapsed, (dominacaoTempoDominarHours * 3600 + dominacaoTempoDominarMinutes * 60 + dominacaoTempoDominarSeconds) * 1000);
+      if (button1Elapsed >= (dominacaoTempoDominarHours * 3600 + dominacaoTempoDominarMinutes * 60 + dominacaoTempoDominarSeconds) * 1000) {
+        if (lastDominacaoState != AZUL) {
+          if (lastDominacaoState == AMARELO) {
+            amareloDominacaoTempo += millis() - dominioStartTime;
+          }
+          dominioStartTime = millis();
+          lastDominacaoState = AZUL;  // Atualização de lastDominacaoState
+        }
+        currentDominacaoState = AZUL;
+        showDominacaoTempoDominatedMessage("Azul");
+        currentState = DOMINACAO_TEMPO_RUNNING;
+        showDominacaoTempoRunning();
+        delay(200);
+      }
+    }
+  } else {
+    button1PressTime = 0;
+    currentState = DOMINACAO_TEMPO_RUNNING;
+    showDominacaoTempoRunning();
+  }
+}
+
+void handleDominacaoTempoDominatingAmarelo() {
+  if (buttonState2 == LOW) {
+    if (button2PressTime == 0) {
+      button2PressTime = millis();
+    } else {
+      button2Elapsed = millis() - button2PressTime;
+      showProgress("Dominando", button2Elapsed, (dominacaoTempoDominarHours * 3600 + dominacaoTempoDominarMinutes * 60 + dominacaoTempoDominarSeconds) * 1000);
+      if (button2Elapsed >= (dominacaoTempoDominarHours * 3600 + dominacaoTempoDominarMinutes * 60 + dominacaoTempoDominarSeconds) * 1000) {
+        if (lastDominacaoState != AMARELO) {
+          if (lastDominacaoState == AZUL) {
+            azulDominacaoTempo += millis() - dominioStartTime;
+          }
+          dominioStartTime = millis();
+          lastDominacaoState = AMARELO;  // Atualização de lastDominacaoState
+        }
+        currentDominacaoState = AMARELO;
+        showDominacaoTempoDominatedMessage("Amarelo");
+        currentState = DOMINACAO_TEMPO_RUNNING;
+        showDominacaoTempoRunning();
+        delay(200);
+      }
+    }
+  } else {
+    button2PressTime = 0;
+    currentState = DOMINACAO_TEMPO_RUNNING;
+    showDominacaoTempoRunning();
+  }
+}
+
+void handleDominacaoTempoRunning() {
+  unsigned long elapsedTime = millis() - startTime;
+  int remainingTime = (dominacaoDuracaoHours * 3600) + (dominacaoDuracaoMinutes * 60) + dominacaoDuracaoSeconds - (elapsedTime / 1000);
+
+  if (remainingTime <= 0) {
+    if (lastDominacaoState == AZUL) {
+      azulDominacaoTempo += millis() - dominioStartTime;
+    } else if (lastDominacaoState == AMARELO) {
+      amareloDominacaoTempo += millis() - dominioStartTime;
+    }
+    currentState = DOMINACAO_TEMPO_VENCEU;
+    showDominacaoTempoVencedor();
+    return;
+  }
+
+  if (buttonState1 == LOW) {
+    button1PressTime = millis();
+    currentState = DOMINACAO_TEMPO_DOMINATING_AZUL;
+    handleDominacaoTempoDominatingAzul();
+    delay(200);
+  }
+
+  if (buttonState2 == LOW) {
+    button2PressTime = millis();
+    currentState = DOMINACAO_TEMPO_DOMINATING_AMARELO;
+    handleDominacaoTempoDominatingAmarelo();
+    delay(200);
+  }
+
+  int displayHours = remainingTime / 3600;
+  int displayMinutes = (remainingTime % 3600) / 60;
+  int displaySeconds = remainingTime % 60;
+
+  lcd.setCursor(0, 1);
+  lcd.print("Tempo: ");
+  if (displayHours < 10) lcd.print("0");
+  lcd.print(displayHours);
+  lcd.print(":");
+  if (displayMinutes < 10) lcd.print("0");
+  lcd.print(displayMinutes);
+  lcd.print(":");
+  if (displaySeconds < 10) lcd.print("0");
+  lcd.print(displaySeconds);
+}
+
+void showDominacaoTempoVencedor() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  if (azulDominacaoTempo > amareloDominacaoTempo) {
+    lcd.print("AZUL Venceu!");
+  } else if (amareloDominacaoTempo > azulDominacaoTempo) {
+    lcd.print("AMARELO Venceu!");
+  } else {
+    lcd.print("EMPATE!");
+  }
+  lcd.setCursor(0, 1);
+  lcd.print("1/2: Det 3: Menu");
+
+  currentDominacaoState = NONE;
+}
+
+void showDominacaoTempoDetails() {
+  char buffer[9];  // Buffer para armazenar o tempo formatado
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Azul    ");
+  formatTime(azulDominacaoTempo, buffer);
+  lcd.print(buffer);
+
+  lcd.setCursor(0, 1);
+  lcd.print("Amarelo ");
+  formatTime(amareloDominacaoTempo, buffer);
+  lcd.print(buffer);
+}
+
+void handleDominacaoTempoVenceu() {
+  if (buttonState1 == LOW || buttonState2 == LOW) {
+    showDominacaoTempoDetails();
+    delay(200);
+    // Esperar pelo botão 1 ou 2 para voltar à tela do vencedor
+    while (true) {
+      buttonState1 = digitalRead(buttonPin1);
+      buttonState2 = digitalRead(buttonPin2);
+      if (buttonState1 == LOW || buttonState2 == LOW) {
+        showDominacaoTempoVencedor();
+        delay(200);
+        break;
+      }
+    }
+  }
+  if (buttonState3 == LOW) {
+    currentState = GAME_MODE_MENU;
+    showGameModeMenu();
+    azulDominacaoTempo = 0;
+    amareloDominacaoTempo = 0;
+    delay(200);
+  }
+}
+
+void showDominacaoTempoDominatedMessage(const char* team) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  if (strcmp(team, "Azul") == 0) {
+    lcd.print("Azul");
+  } else {
+    lcd.print("Amarelo");
+  }
+  lcd.setCursor(0, 1);
+  lcd.print("Dominou");
+  delay(1500);  // Espera por 1.5 segundos
+}
+
+void showDominacaoTempoRunning() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Dominio:");
+  switch (currentDominacaoState) {
+    case NONE:
+      lcd.print("Ninguem");
+      break;
+    case AZUL:
+      lcd.print("Azul");
+      break;
+    case AMARELO:
+      lcd.print("Amarelo");
+      break;
+  }
+  showDominacaoTempoRunningTime();
+}
+
+void showDominacaoTempoRunningTime() {
+  unsigned long elapsedTime = millis() - startTime;
+  int remainingTime = (dominacaoDuracaoHours * 3600) + (dominacaoDuracaoMinutes * 60) + dominacaoDuracaoSeconds - (elapsedTime / 1000);
+
+  int displayHours = remainingTime / 3600;
+  int displayMinutes = (remainingTime % 3600) / 60;
+  int displaySeconds = remainingTime % 60;
+
+  lcd.setCursor(0, 1);
+  if (displayHours < 10) lcd.print("0");
+  lcd.print(displayHours);
+  lcd.print(":");
+  if (displayMinutes < 10) lcd.print("0");
+  lcd.print(displayMinutes);
+  lcd.print(":");
+  if (displaySeconds < 10) lcd.print("0");
+  lcd.print(displaySeconds);
+}
+
+
+void formatTime(unsigned long timeMillis, char* buffer) {
+  unsigned long totalSeconds = timeMillis / 1000;
+  unsigned int hours = totalSeconds / 3600;
+  unsigned int minutes = (totalSeconds % 3600) / 60;
+  unsigned int seconds = totalSeconds % 60;
+  sprintf(buffer, "%02u:%02u:%02u", hours, minutes, seconds);
 }
