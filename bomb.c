@@ -5,6 +5,9 @@
 const int buttonPin1 = 7;
 const int buttonPin2 = 8;
 const int buttonPin3 = 9;
+// Relé
+const int relePin = 6;
+bool isExploding = false;
 
 // Variáveis de estado dos botões
 int buttonState1 = 0;
@@ -112,6 +115,9 @@ void setup() {
   pinMode(buttonPin1, INPUT_PULLUP);
   pinMode(buttonPin2, INPUT_PULLUP);
   pinMode(buttonPin3, INPUT_PULLUP);
+
+  pinMode(relePin, OUTPUT);
+
   lcd.begin(16, 2);
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(9600);
@@ -419,6 +425,8 @@ void handleStartDisarmBomb() {
 
 void handleVictory() {
   if (buttonState1 == LOW) {
+    stopRele();
+
     currentState = GAME_MODE_MENU;
     showGameModeMenu();
     delay(200);
@@ -570,6 +578,9 @@ void handleDominacaoDominatingAmarelo() {
 }
 
 void showDominacaoVencedor() {
+  isExploding = true;
+  toggleRele(20000, 700);
+
   lcd.clear();
   lcd.setCursor(0, 0);
   if (currentDominacaoState == AZUL) {
@@ -587,6 +598,7 @@ void showDominacaoVencedor() {
 
 void handleDominacaoVenceu() {
   if (buttonState3 == LOW) {
+    stopRele();
     currentState = GAME_MODE_MENU;
     showGameModeMenu();
     delay(200);
@@ -661,7 +673,7 @@ void showCronometroPartida() {
 void updateCronometroPartida() {
   unsigned long elapsedTime = millis() - startTime;
   int totalSeconds = (armHours * 3600) + (armMinutes * 60) + armSeconds - (elapsedTime / 1000);
-  
+
   if (totalSeconds <= 0) {
     currentState = CT_VENCEU;
     showCTVenceu();
@@ -991,6 +1003,9 @@ void showCTVenceu() {
   lcd.print("CT Venceu");
   lcd.setCursor(0, 1);
   lcd.print("Aperte 1 p/ menu");
+
+  isExploding = true;
+  toggleRele(30000, 700);
 }
 
 void showTRVenceu() {
@@ -999,6 +1014,9 @@ void showTRVenceu() {
   lcd.print("TR Venceu");
   lcd.setCursor(0, 1);
   lcd.print("Aperte 1 p/ menu");
+
+  isExploding = true;
+  toggleRele(30000, 700);
 }
 
 void showDominacaoConfig() {
@@ -1454,6 +1472,9 @@ void handleDominacaoTempoRunning() {
 }
 
 void showDominacaoTempoVencedor() {
+  isExploding = true;
+  toggleRele(30000, 700);
+
   lcd.clear();
   lcd.setCursor(0, 0);
   if (azulDominacaoTempo > amareloDominacaoTempo) {
@@ -1500,6 +1521,7 @@ void handleDominacaoTempoVenceu() {
     }
   }
   if (buttonState3 == LOW) {
+    stopRele();
     currentState = GAME_MODE_MENU;
     showGameModeMenu();
     azulDominacaoTempo = 0;
@@ -1558,11 +1580,28 @@ void showDominacaoTempoRunningTime() {
   lcd.print(displaySeconds);
 }
 
-
 void formatTime(unsigned long timeMillis, char* buffer) {
   unsigned long totalSeconds = timeMillis / 1000;
   unsigned int hours = totalSeconds / 3600;
   unsigned int minutes = (totalSeconds % 3600) / 60;
   unsigned int seconds = totalSeconds % 60;
   sprintf(buffer, "%02u:%02u:%02u", hours, minutes, seconds);
+}
+
+void toggleRele(unsigned long timeDelay, unsigned long duration) {
+  unsigned long startTime = millis();
+  bool releState = false;
+
+  while (millis() - startTime < timeDelay && isExploding == true) {
+    releState = !releState;
+    digitalWrite(relePin, releState);
+    delay(duration);
+  }
+
+  digitalWrite(relePin, LOW); // Garante que o relé está desligado ao final
+}
+
+void stopRele() {
+  isExploding = false; // Corrigido: ponto e vírgula
+  digitalWrite(relePin, LOW); // Garante que o relé está desligado
 }
