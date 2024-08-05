@@ -1,0 +1,11 @@
+Botão 1 (possivel cor azul)->
+  Modo Bomba: Armar a bomba
+  Modo Dominação: Time Azul
+
+Botão 2 (possivel cor amarelo)->
+  Modo Bomba: Desarmar a bomba
+  Modo Dominação: Time Amarelo(Vermelho)
+
+Botão 3 (possivel cor vermelha)->
+  Modo Bomba: Sair do jogo
+  Modo Dominação: Sair do jogo
