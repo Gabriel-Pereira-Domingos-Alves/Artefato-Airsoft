@@ -70,6 +70,9 @@ Toda a documentação, incluindo esquemas de circuitos, lista de componentes e i
 
 Este projeto combina eletrônica, programação e airsoft para criar uma experiência de jogo mais realista e envolvente. Esperamos inspirar outros a inovar e desenvolver suas próprias soluções tecnológicas para o airsoft.
 
+## Licença
+
+Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
 
 ## Contato
 
